@@ -2,6 +2,7 @@
 #include "io/can/can.hpp"
 #include "io/dbus/dbus.hpp"
 #include "motor/rm_motor/rm_motor.hpp"
+#include "tools/pid/pid.hpp"
 
 //实例化一个遥控器
 sp::DBus remote(&huart3);
@@ -14,6 +15,19 @@ sp::RM_Motor motor_6020_1(1, sp::RM_Motors::GM6020_V);
 sp::RM_Motor motor_6020_2(2, sp::RM_Motors::GM6020_V);
 sp::RM_Motor motor_6020_3(3, sp::RM_Motors::GM6020_V);
 sp::RM_Motor motor_6020_4(4, sp::RM_Motors::GM6020_V);
+
+// dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
+// 速度环 PID
+sp::PID motor1_pid_speed(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_speed(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_speed(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_speed(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+
+// 旋转 PID
+sp::PID motor1_pid_rot(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_rot(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_rot(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_rot(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 extern "C" void control_task()
 {
@@ -31,8 +45,7 @@ extern "C" void control_task()
         //电容控制策略
         break;
 
-      case sp::DBusSwitchMode::MID:
-
+      case sp::DBusSwitchMode::MID: {
         // 摇杆输入归一化（-1 ~ +1）
         float lx = remote.ch_lh / 660.0f;  // 左摇杆左右
         float ly = remote.ch_lv / 660.0f;  // 左摇杆前后
@@ -40,23 +53,55 @@ extern "C" void control_task()
         float ry = remote.ch_rv / 660.0f;  // 右摇杆前后
 
         // 将摇杆输入转化为速度指令
-        float vy = ly * 5.0f;  // 前后速度指令
-        float vx = lx * 5.0f;  // 左右速度指令
+        float vx = ly * 5.0f;  // 前后速度指令
+        float vy = lx * 5.0f;  // 左右速度指令
         float wz = 0.0f;       // 旋转角速度（暂时为 0）
 
         // 右摇杆控制旋转
-        if (ry > 200)
-          wz = -2.0f;  // 向左转
-        else if (ry < -200)
-          wz = 2.0f;  // 向右转
+        const float wz_fixed = 2.0f;
+        const int threshold = 200;
+
+        // 只要右摇杆偏离中心，底盘就以固定角速度旋转
+        if (rx > threshold || rx < -threshold || ry > threshold || ry < -threshold) {
+          if (rx < 0 || ry < 0)
+            wz = -wz_fixed;  // 向左旋转
+          else
+            wz = wz_fixed;  // 向右旋转
+        }
 
         // 左摇杆前后控制前后速度
-        motor_6020_1.cmd(vy);
-        motor_6020_2.cmd(vy);
-        motor_6020_3.cmd(vy);
-        motor_6020_4.cmd(vy);
+        // 直行PID
+        motor1_pid_speed.calc(vx, motor_6020_1.speed);
+        motor2_pid_speed.calc(vx, motor_6020_2.speed);
+        motor3_pid_speed.calc(vx, motor_6020_3.speed);
+        motor4_pid_speed.calc(vx, motor_6020_4.speed);
 
-        // 计算电压命令（先简单共用一个）
+        // 将PID输出结果作为扭矩命令
+        motor_6020_1.cmd(motor1_pid_speed.out);
+        motor_6020_2.cmd(motor2_pid_speed.out);
+        motor_6020_3.cmd(motor3_pid_speed.out);
+        motor_6020_4.cmd(motor4_pid_speed.out);
+
+        // 旋转PID
+
+        const float r = 0.077f;                  // 轮半径 m
+        const float L_plus_W = 0.165f + 0.185f;  // 纵向+横向到中心 m
+        const float gear_ratio = 14.9f;          // 电机减速比
+
+        float omega_FL = (1.0f / r) * (vx - vy - L_plus_W * wz) * gear_ratio;
+        float omega_FR = (1.0f / r) * (vx + vy + L_plus_W * wz) * gear_ratio;
+        float omega_RL = (1.0f / r) * (vx + vy - L_plus_W * wz) * gear_ratio;
+        float omega_RR = (1.0f / r) * (vx - vy + L_plus_W * wz) * gear_ratio;
+
+        motor1_pid_rot.calc(omega_FL, motor_6020_1.speed);
+        motor2_pid_rot.calc(omega_FR, motor_6020_2.speed);
+        motor3_pid_rot.calc(omega_RL, motor_6020_3.speed);
+        motor4_pid_rot.calc(omega_RR, motor_6020_4.speed);
+
+        motor_6020_1.cmd(motor1_pid_rot.out);
+        motor_6020_2.cmd(motor2_pid_rot.out);
+        motor_6020_3.cmd(motor3_pid_rot.out);
+        motor_6020_4.cmd(motor4_pid_rot.out);
 
         float voltage_cmd = vx;
 
@@ -65,17 +110,21 @@ extern "C" void control_task()
         if (voltage_cmd < -10.0f) voltage_cmd = -10.0f;
 
         break;
+      }
 
         //约定右down挡时全部电机失能
-      case sp::DBusSwitchMode::DOWN:
+      case sp::DBusSwitchMode::DOWN: {
         motor_6020_1.cmd(0.0f);
         motor_6020_2.cmd(0.0f);
         motor_6020_3.cmd(0.0f);
         motor_6020_4.cmd(0.0f);
         break;
+      }
       default:
         break;
     }
+
+    // 统一发送
     motor_6020_1.write(can1.tx_data);
     motor_6020_2.write(can1.tx_data);
     motor_6020_3.write(can1.tx_data);
