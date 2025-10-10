@@ -27,7 +27,7 @@ float kp_speed = 0.015f;
 float ki_speed = 0.0f;
 float kd_speed = 0.009f;
 
-// 直行PID
+//PID
 sp::PID motor1_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor2_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor3_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
@@ -62,8 +62,8 @@ extern "C" void control_task()
         float wz = 0.0f;  // 旋转角速度
         const float wz_fixed = 2.0f;
 
-        // 只要右摇杆偏离中心，底盘就以固定角速度旋转
-        if (rx > deadzone || rx < -deadzone || ry > deadzone || ry < -deadzone) {
+        // 右摇杆偏离中心，底盘就以固定角速度旋转
+        if (abs(rx) > deadzone || abs(ry) > deadzone) {
           if (rx < 0 || ry < 0)
             wz = -wz_fixed;  // 向左旋转
           else
@@ -74,9 +74,9 @@ extern "C" void control_task()
         }
 
         // 左摇杆偏离中心，底盘直线运动
-        if (abs(remote.ch_lh) > deadzone || abs(remote.ch_lv) > deadzone) {
-          vx = ly * 1.0f;
-          vy = lx * 1.0f;
+        if (abs(lx) > deadzone || abs(ly) > deadzone) {
+          vx = ly * 5.0f;
+          vy = lx * 5.0f;
         }
         else {
           vx = 0;
