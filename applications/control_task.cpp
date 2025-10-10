@@ -21,14 +21,17 @@ sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
 
 // PID 参数，方便调试
 
-float kp_speed = 0.001f;
-float ki_speed = 0.02f;
-float kd_speed = 0.0f;
+float deadzone = 0.05f;
 
-float kp_rot = 0.001f;
+float kp_speed = 0.1f;
+float ki_speed = 0.2f;
+float kd_speed = 0.5f;
+
+float kp_rot = 0.1f;
 float ki_rot = 0.2f;
-float kd_rot = 0.0f;
+float kd_rot = 0.5f;
 
+// 直行PID
 sp::PID motor1_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor2_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor3_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
@@ -82,23 +85,16 @@ extern "C" void control_task()
         }
 
         // 左摇杆偏离中心，底盘直线运动
-        if (abs(remote.ch_lh) > 0.1 || abs(remote.ch_lv) > 0.1) {
-          vx = ly * 0.5f;
-          vy = lx * 0.5f;
+        if (abs(remote.ch_lh) > deadzone || abs(remote.ch_lv) > deadzone) {
+          vx = ly * 1.0f;
+          vy = lx * 1.0f;
         }
         else {
           vx = 0;
           vy = 0;
         }
 
-        // 直行PID
-        motor1_pid_speed.calc(vx, motor_3508_1.speed);
-        motor2_pid_speed.calc(vx, motor_3508_2.speed);
-        motor3_pid_speed.calc(vx, motor_3508_3.speed);
-        motor4_pid_speed.calc(vx, motor_3508_4.speed);
-
-        // 旋转PID
-
+        //麥輪底盤解算
         const float r = 0.077f;                  // 轮半径 m
         const float L_plus_W = 0.165f + 0.185f;  // 纵向+横向到中心 m
         const float gear_ratio = 14.9f;          // 电机减速比
@@ -108,6 +104,13 @@ extern "C" void control_task()
         float omega_RL = (1.0f / r) * (vx + vy - L_plus_W * wz) * gear_ratio;
         float omega_RR = (1.0f / r) * (vx - vy + L_plus_W * wz) * gear_ratio;
 
+        // 直行PID
+        motor1_pid_speed.calc(omega_FL, motor_3508_1.speed);
+        motor2_pid_speed.calc(omega_FR, motor_3508_2.speed);
+        motor3_pid_speed.calc(omega_RR, motor_3508_3.speed);
+        motor4_pid_speed.calc(omega_RL, motor_3508_4.speed);
+
+        // 旋转PID
         motor1_pid_rot.calc(omega_FL, motor_3508_1.speed);
         motor2_pid_rot.calc(omega_FR, motor_3508_2.speed);
         motor3_pid_rot.calc(omega_RR, motor_3508_3.speed);
@@ -125,7 +128,9 @@ extern "C" void control_task()
         motor_3508_4.cmd(torque4);
 
         // 如果在死區的話歸零
-        if (fabs(lx) < 0.1 && fabs(ly) < 0.1 && fabs(rx) < 0.1 && fabs(ry) < 0.1) {
+        if (
+          fabs(lx) < deadzone && fabs(ly) < deadzone && fabs(rx) < deadzone &&
+          fabs(ry) < deadzone) {
           motor_3508_1.cmd(0);
           motor_3508_2.cmd(0);
           motor_3508_3.cmd(0);
