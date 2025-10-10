@@ -7,10 +7,10 @@
 //实例化一个遥控器
 sp::DBus remote(&huart3);
 
-//实例化can1
-sp::CAN can1(&hcan1);
+//实例化can2
+sp::CAN can2(&hcan2);
 
-//实例化四个id分别为1、2、3、4的电压环（3508_V）3508电机
+//实例化四个id分别为1、2、3、4的3508电机
 sp::RM_Motor motor_3508_1(1, sp::RM_Motors::M3508);
 sp::RM_Motor motor_3508_2(2, sp::RM_Motors::M3508);
 sp::RM_Motor motor_3508_3(3, sp::RM_Motors::M3508);
@@ -18,25 +18,25 @@ sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
 
 // dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
 // 速度环 PID
-sp::PID motor1_pid_speed(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_speed(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_speed(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_speed(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor1_pid_speed(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_speed(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_speed(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_speed(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 // 旋转 PID
-sp::PID motor1_pid_rot(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_rot(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_rot(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_rot(0.001f, 20.0f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor1_pid_rot(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_rot(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_rot(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_rot(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 extern "C" void control_task()
 {
   //接收遥控器消息
   remote.request();
 
-  //can1初始化配置
-  can1.config();
-  can1.start();
+  //can2初始化配置
+  can2.config();
+  can2.start();
 
   //ps：其他大多数电机cmd的均为扭矩值
   while (true) {
@@ -135,14 +135,14 @@ extern "C" void control_task()
     }
 
     // 统一发送
-    motor_3508_1.write(can1.tx_data);
-    motor_3508_2.write(can1.tx_data);
-    motor_3508_3.write(can1.tx_data);
-    motor_3508_4.write(can1.tx_data);
-    can1.send(motor_3508_1.tx_id);
-    can1.send(motor_3508_2.tx_id);
-    can1.send(motor_3508_3.tx_id);
-    can1.send(motor_3508_4.tx_id);
+    motor_3508_1.write(can2.tx_data);
+    motor_3508_2.write(can2.tx_data);
+    motor_3508_3.write(can2.tx_data);
+    motor_3508_4.write(can2.tx_data);
+    can2.send(motor_3508_1.tx_id);
+    can2.send(motor_3508_2.tx_id);
+    can2.send(motor_3508_3.tx_id);
+    can2.send(motor_3508_4.tx_id);
 
     osDelay(10);
   }
@@ -173,17 +173,17 @@ extern "C" void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan)
   auto stamp_ms = osKernelSysTick();
 
   while (HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO0) > 0) {
-    if (hcan == &hcan1) {
-      can1.recv();
+    if (hcan == &hcan2) {
+      can2.recv();
 
-      if (can1.rx_id == motor_3508_1.rx_id)
-        motor_3508_1.read(can1.rx_data, stamp_ms);
-      else if (can1.rx_id == motor_3508_2.rx_id)
-        motor_3508_2.read(can1.rx_data, stamp_ms);
-      else if (can1.rx_id == motor_3508_3.rx_id)
-        motor_3508_3.read(can1.rx_data, stamp_ms);
-      else if (can1.rx_id == motor_3508_4.rx_id)
-        motor_3508_4.read(can1.rx_data, stamp_ms);
+      if (can2.rx_id == motor_3508_1.rx_id)
+        motor_3508_1.read(can2.rx_data, stamp_ms);
+      else if (can2.rx_id == motor_3508_2.rx_id)
+        motor_3508_2.read(can2.rx_data, stamp_ms);
+      else if (can2.rx_id == motor_3508_3.rx_id)
+        motor_3508_3.read(can2.rx_data, stamp_ms);
+      else if (can2.rx_id == motor_3508_4.rx_id)
+        motor_3508_4.read(can2.rx_data, stamp_ms);
     }
   }
 }
