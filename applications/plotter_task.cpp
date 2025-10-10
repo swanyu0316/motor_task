@@ -1,11 +1,15 @@
-#include "applications/control_task.hpp"
 #include "cmsis_os.h"
+#include "control_task.hpp"
 #include "io/dbus/dbus.hpp"
 #include "io/plotter/plotter.hpp"
 #include "motor/rm_motor/rm_motor.hpp"
 
 extern sp::DBus remote;
-extern sp::RM_Motor motor_6020;
+extern sp::RM_Motor motor_6020_1;
+extern sp::RM_Motor motor_6020_2;
+extern sp::RM_Motor motor_6020_3;
+extern sp::RM_Motor motor_6020_4;
+
 sp::Plotter plotter(&huart1);
 
 extern "C" void plotter_task()
