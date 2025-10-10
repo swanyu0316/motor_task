@@ -49,6 +49,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         applications/led_task.cpp
         applications/control_task.cpp
         applications/plotter_task.cpp
+        applications/can_task.cpp
 
         sp_middleware/io/dbus/dbus.cpp
         sp_middleware/io/buzzer/buzzer.cpp
@@ -57,6 +58,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         sp_middleware/motor/rm_motor/rm_motor.cpp
         sp_middleware/io/plotter/plotter.cpp
         sp_middleware/tools/pid/pid.cpp
+
+         
+
 )
 
 # Add include paths
