@@ -18,16 +18,16 @@ sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
 
 // dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
 // 速度环 PID
-sp::PID motor1_pid_speed(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_speed(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_speed(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_speed(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor1_pid_speed(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_speed(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_speed(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_speed(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 // 旋转 PID
-sp::PID motor1_pid_rot(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_rot(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_rot(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_rot(0.001f, 0.2f, 0.5f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor1_pid_rot(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_rot(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_rot(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_rot(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 extern "C" void control_task()
 {
@@ -105,8 +105,8 @@ extern "C" void control_task()
 
         motor1_pid_rot.calc(omega_FL, motor_3508_1.speed);
         motor2_pid_rot.calc(omega_FR, motor_3508_2.speed);
-        motor3_pid_rot.calc(omega_RL, motor_3508_3.speed);
-        motor4_pid_rot.calc(omega_RR, motor_3508_4.speed);
+        motor3_pid_rot.calc(omega_RR, motor_3508_3.speed);
+        motor4_pid_rot.calc(omega_RL, motor_3508_4.speed);
 
         motor_3508_1.cmd(motor1_pid_rot.out);
         motor_3508_2.cmd(motor2_pid_rot.out);
