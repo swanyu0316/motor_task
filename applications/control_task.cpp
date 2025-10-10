@@ -18,16 +18,16 @@ sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
 
 // dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
 // 速度环 PID
-sp::PID motor1_pid_speed(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_speed(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_speed(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_speed(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor1_pid_speed(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_speed(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_speed(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_speed(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 // 旋转 PID
-sp::PID motor1_pid_rot(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_rot(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_rot(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_rot(0.001f, 0.2f, 0.1f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor1_pid_rot(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_rot(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_rot(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_rot(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 extern "C" void control_task()
 {
@@ -47,10 +47,10 @@ extern "C" void control_task()
 
       case sp::DBusSwitchMode::MID: {
         // 摇杆输入归一化（-1 ~ +1）
-        float lx = remote.ch_lh / 660.0f;  // 左摇杆左右
-        float ly = remote.ch_lv / 660.0f;  // 左摇杆前后
-        float rx = remote.ch_rh / 660.0f;  // 右摇杆左右
-        float ry = remote.ch_rv / 660.0f;  // 右摇杆前后
+        float lx = remote.ch_lh;  // 左摇杆左右
+        float ly = remote.ch_lv;  // 左摇杆前后
+        float rx = remote.ch_rh;  // 右摇杆左右
+        float ry = remote.ch_rv;  // 右摇杆前后
 
         // 将摇杆输入转化为速度指令
         float vx = 0.0f;  // 前后速度指令
@@ -71,9 +71,9 @@ extern "C" void control_task()
         }
 
         // 左摇杆偏离中心，底盘直线运动
-        if (abs(remote.ch_lh) > 50 || abs(remote.ch_lv) > 50) {
-          vx = ly * 5.0f;
-          vy = lx * 5.0f;
+        if (abs(remote.ch_lh) > 0.1 || abs(remote.ch_lv) > 0.1) {
+          vx = ly * 2.0f;
+          vy = lx * 2.0f;
         }
         else {
           vx = 0;
@@ -85,12 +85,6 @@ extern "C" void control_task()
         motor2_pid_speed.calc(vx, motor_3508_2.speed);
         motor3_pid_speed.calc(vx, motor_3508_3.speed);
         motor4_pid_speed.calc(vx, motor_3508_4.speed);
-
-        // 将PID输出结果作为扭矩命令
-        motor_3508_1.cmd(motor1_pid_speed.out);
-        motor_3508_2.cmd(motor2_pid_speed.out);
-        motor_3508_3.cmd(motor3_pid_speed.out);
-        motor_3508_4.cmd(motor4_pid_speed.out);
 
         // 旋转PID
 
@@ -108,10 +102,16 @@ extern "C" void control_task()
         motor3_pid_rot.calc(omega_RR, motor_3508_3.speed);
         motor4_pid_rot.calc(omega_RL, motor_3508_4.speed);
 
-        motor_3508_1.cmd(motor1_pid_rot.out);
-        motor_3508_2.cmd(motor2_pid_rot.out);
-        motor_3508_3.cmd(motor3_pid_rot.out);
-        motor_3508_4.cmd(motor4_pid_rot.out);
+        // 先組合再cmd
+
+        float torque1 = motor1_pid_speed.out + motor1_pid_rot.out;
+        motor_3508_1.cmd(torque1);
+        float torque2 = motor2_pid_speed.out + motor2_pid_rot.out;
+        motor_3508_2.cmd(torque2);
+        float torque3 = motor3_pid_speed.out + motor3_pid_rot.out;
+        motor_3508_3.cmd(torque3);
+        float torque4 = motor4_pid_speed.out + motor4_pid_rot.out;
+        motor_3508_4.cmd(torque4);
 
         float voltage_cmd = vx;
 
