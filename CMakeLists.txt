@@ -49,7 +49,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         applications/led_task.cpp
         applications/control_task.cpp
         applications/plotter_task.cpp
-        applications/can_task.cpp
 
         sp_middleware/io/dbus/dbus.cpp
         sp_middleware/io/buzzer/buzzer.cpp
