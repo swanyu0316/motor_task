@@ -10,7 +10,7 @@ extern sp::RM_Motor motor_3508_2;
 extern sp::RM_Motor motor_3508_3;
 extern sp::RM_Motor motor_3508_4;
 
-sp::Plotter plotter(&huart3);
+sp::Plotter plotter(&huart1);
 
 extern "C" void plotter_task()
 {

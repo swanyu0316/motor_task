@@ -18,16 +18,27 @@ sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
 
 // dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
 // 速度环 PID
-sp::PID motor1_pid_speed(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_speed(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_speed(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_speed(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+
+// PID 参数，方便调试
+
+float kp_speed = 0.001f;
+float ki_speed = 0.02f;
+float kd_speed = 0.0f;
+
+float kp_rot = 0.001f;
+float ki_rot = 0.2f;
+float kd_rot = 0.0f;
+
+sp::PID motor1_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 // 旋转 PID
-sp::PID motor1_pid_rot(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_rot(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_rot(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_rot(0.001f, 0.2f, 0.0f, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor1_pid_rot(kp_rot, ki_rot, kd_rot, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor2_pid_rot(kp_rot, ki_rot, kd_rot, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor3_pid_rot(kp_rot, ki_rot, kd_rot, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+sp::PID motor4_pid_rot(kp_rot, ki_rot, kd_rot, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 extern "C" void control_task()
 {
@@ -46,7 +57,7 @@ extern "C" void control_task()
         break;
 
       case sp::DBusSwitchMode::MID: {
-        // 摇杆输入归一化（-1 ~ +1）
+        // 摇杆输入
         float lx = remote.ch_lh;  // 左摇杆左右
         float ly = remote.ch_lv;  // 左摇杆前后
         float rx = remote.ch_rh;  // 右摇杆左右
@@ -57,7 +68,7 @@ extern "C" void control_task()
         float vy = 0.0f;  // 左右速度指令
         float wz = 0.0f;  // 旋转角速度
         const float wz_fixed = 2.0f;
-        const int threshold = 200;
+        const int threshold = 0.1;
 
         // 只要右摇杆偏离中心，底盘就以固定角速度旋转
         if (rx > threshold || rx < -threshold || ry > threshold || ry < -threshold) {
@@ -72,8 +83,8 @@ extern "C" void control_task()
 
         // 左摇杆偏离中心，底盘直线运动
         if (abs(remote.ch_lh) > 0.1 || abs(remote.ch_lv) > 0.1) {
-          vx = ly * 2.0f;
-          vy = lx * 2.0f;
+          vx = ly * 0.5f;
+          vy = lx * 0.5f;
         }
         else {
           vx = 0;
@@ -112,6 +123,14 @@ extern "C" void control_task()
         motor_3508_3.cmd(torque3);
         float torque4 = motor4_pid_speed.out + motor4_pid_rot.out;
         motor_3508_4.cmd(torque4);
+
+        // 如果在死區的話歸零
+        if (fabs(lx) < 0.1 && fabs(ly) < 0.1 && fabs(rx) < 0.1 && fabs(ry) < 0.1) {
+          motor_3508_1.cmd(0);
+          motor_3508_2.cmd(0);
+          motor_3508_3.cmd(0);
+          motor_3508_4.cmd(0);
+        }
 
         float voltage_cmd = vx;
 
