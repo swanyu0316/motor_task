@@ -19,29 +19,19 @@ sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
 // dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
 // 速度环 PID
 
-// PID 参数，方便调试
+// PID 参数
 
 float deadzone = 0.05f;
 
-float kp_speed = 0.1f;
-float ki_speed = 0.02f;
-float kd_speed = 0.05f;
-
-float kp_rot = 0.1f;
-float ki_rot = 0.2f;
-float kd_rot = 0.5f;
+float kp_speed = 0.015f;
+float ki_speed = 0.0f;
+float kd_speed = 0.009f;
 
 // 直行PID
 sp::PID motor1_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor2_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor3_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor4_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-
-// 旋转 PID
-sp::PID motor1_pid_rot(kp_rot, ki_rot, kd_rot, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor2_pid_rot(kp_rot, ki_rot, kd_rot, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor3_pid_rot(kp_rot, ki_rot, kd_rot, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
-sp::PID motor4_pid_rot(kp_rot, ki_rot, kd_rot, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 
 extern "C" void control_task()
 {
@@ -71,10 +61,9 @@ extern "C" void control_task()
         float vy = 0.0f;  // 左右速度指令
         float wz = 0.0f;  // 旋转角速度
         const float wz_fixed = 2.0f;
-        const int threshold = 0.1;
 
         // 只要右摇杆偏离中心，底盘就以固定角速度旋转
-        if (rx > threshold || rx < -threshold || ry > threshold || ry < -threshold) {
+        if (rx > deadzone || rx < -deadzone || ry > deadzone || ry < -deadzone) {
           if (rx < 0 || ry < 0)
             wz = -wz_fixed;  // 向左旋转
           else
@@ -104,27 +93,19 @@ extern "C" void control_task()
         float omega_RL = (1.0f / r) * (vx + vy - L_plus_W * wz) * gear_ratio;
         float omega_RR = (1.0f / r) * (vx - vy + L_plus_W * wz) * gear_ratio;
 
-        // 直行PID
+        // PID
         motor1_pid_speed.calc(omega_FL, motor_3508_1.speed);
         motor2_pid_speed.calc(omega_FR, motor_3508_2.speed);
         motor3_pid_speed.calc(omega_RR, motor_3508_3.speed);
         motor4_pid_speed.calc(omega_RL, motor_3508_4.speed);
 
-        // 旋转PID
-        motor1_pid_rot.calc(omega_FL, motor_3508_1.speed);
-        motor2_pid_rot.calc(omega_FR, motor_3508_2.speed);
-        motor3_pid_rot.calc(omega_RR, motor_3508_3.speed);
-        motor4_pid_rot.calc(omega_RL, motor_3508_4.speed);
-
-        // 先組合再cmd
-
-        float torque1 = motor1_pid_speed.out + motor1_pid_rot.out;
+        float torque1 = motor1_pid_speed.out;
         motor_3508_1.cmd(torque1);
-        float torque2 = motor2_pid_speed.out + motor2_pid_rot.out;
+        float torque2 = motor2_pid_speed.out;
         motor_3508_2.cmd(torque2);
-        float torque3 = motor3_pid_speed.out + motor3_pid_rot.out;
+        float torque3 = motor3_pid_speed.out;
         motor_3508_3.cmd(torque3);
-        float torque4 = motor4_pid_speed.out + motor4_pid_rot.out;
+        float torque4 = motor4_pid_speed.out;
         motor_3508_4.cmd(torque4);
 
         // 如果在死區的話歸零
@@ -168,7 +149,7 @@ extern "C" void control_task()
     can2.send(motor_3508_3.tx_id);
     can2.send(motor_3508_4.tx_id);
 
-    osDelay(1);
+    osDelay(10);
   }
 }
 
