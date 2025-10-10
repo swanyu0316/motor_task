@@ -24,8 +24,8 @@ sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
 float deadzone = 0.05f;
 
 float kp_speed = 0.1f;
-float ki_speed = 0.2f;
-float kd_speed = 0.5f;
+float ki_speed = 0.02f;
+float kd_speed = 0.05f;
 
 float kp_rot = 0.1f;
 float ki_rot = 0.2f;
@@ -168,7 +168,7 @@ extern "C" void control_task()
     can2.send(motor_3508_3.tx_id);
     can2.send(motor_3508_4.tx_id);
 
-    osDelay(10);
+    osDelay(1);
   }
 }
 
