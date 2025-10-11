@@ -64,10 +64,10 @@ extern "C" void control_task()
 
       case sp::DBusSwitchMode::MID: {
         // 摇杆输入
-        float lx = remote.ch_lh;  // 左摇杆左右
-        float ly = remote.ch_lv;  // 左摇杆前后
-        float rx = remote.ch_rh;  // 右摇杆左右
-        float ry = remote.ch_rv;  // 右摇杆前后
+        float lx = remote.ch_rh;  // 右摇杆左右
+        float ly = remote.ch_rv;  // 右摇杆前后
+        float rx = remote.ch_lh;  // 左摇杆左右
+        float ry = remote.ch_lv;  // 左摇杆前后
 
         // 将摇杆输入转化为速度指令
         float vx = 0.0f;  // 前后速度指令
@@ -75,12 +75,24 @@ extern "C" void control_task()
         float wz = 0.0f;  // 旋转角速度
         const float wz_fixed = 2.0f;
 
-        // 右摇杆偏离中心，底盘就以固定角速度旋转
-        if (fabsf(rx) > deadzone || fabsf(ry) > deadzone) {
-          if (rx < 0.0f || ry < 0.0f)
-            wz = -wz_fixed;  // 向左旋转
-          else
-            wz = wz_fixed;  // 向右旋转
+        // 右摇杆前后控制向左旋转
+        if (fabsf(ry) > deadzone) {
+          if (ry < 0.0f) {
+            wz = -wz_fixed;  // 右摇杆向前推 - 向左旋转
+          }
+          else {
+            wz = -wz_fixed;  // 右摇杆向后拉 - 向左旋转
+          }
+        }
+
+        // 右摇杆左右控制向右旋转
+        else if (fabsf(rx) > deadzone) {
+          if (rx < 0.0f) {
+            wz = wz_fixed;  // 右摇杆向左推 - 向右旋转
+          }
+          else {
+            wz = wz_fixed;  // 右摇杆向右推 - 向右旋转
+          }
         }
         else {
           wz = 0.0f;
@@ -88,8 +100,8 @@ extern "C" void control_task()
 
         // 左摇杆偏离中心，底盘直线运动
         if (fabsf(lx) > deadzone || fabsf(ly) > deadzone) {
-          vx = ly * 5.0f;
-          vy = lx * 5.0f;
+          vx = ly * 1.0f;
+          vy = lx * 1.0f;
         }
         else {
           vx = 0.0f;
@@ -101,10 +113,10 @@ extern "C" void control_task()
         const float L_plus_W = 0.165f + 0.185f;  // 纵向+横向到中心 m
         const float gear_ratio = 14.9f;          // 电机减速比
 
-        float omega_FL = (1.0f / r) * (vx - vy - L_plus_W * wz) * gear_ratio;
-        float omega_FR = (1.0f / r) * (vx + vy + L_plus_W * wz) * gear_ratio;
-        float omega_RL = (1.0f / r) * (vx + vy - L_plus_W * wz) * gear_ratio;
-        float omega_RR = (1.0f / r) * (vx - vy + L_plus_W * wz) * gear_ratio;
+        float omega_FL = (1.0f / r) * (vx - vy + L_plus_W * wz) * gear_ratio;
+        float omega_FR = (1.0f / r) * (vx + vy - L_plus_W * wz) * gear_ratio;
+        float omega_RL = (1.0f / r) * (vx + vy + L_plus_W * wz) * gear_ratio;
+        float omega_RR = (1.0f / r) * (vx - vy - L_plus_W * wz) * gear_ratio;
 
         // PID
         motor1_pid_speed.calc(omega_FL, motor_3508_1.speed);
@@ -217,12 +229,12 @@ extern "C" void control_task()
 
     // 统一发送
     motor_3508_1.write(can2.tx_data);
-    motor_3508_2.write(can2.tx_data);
-    motor_3508_3.write(can2.tx_data);
-    motor_3508_4.write(can2.tx_data);
     can2.send(motor_3508_1.tx_id);
+    motor_3508_2.write(can2.tx_data);
     can2.send(motor_3508_2.tx_id);
+    motor_3508_3.write(can2.tx_data);
     can2.send(motor_3508_3.tx_id);
+    motor_3508_4.write(can2.tx_data);
     can2.send(motor_3508_4.tx_id);
 
     osDelay(10);
