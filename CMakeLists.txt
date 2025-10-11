@@ -57,6 +57,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         sp_middleware/motor/rm_motor/rm_motor.cpp
         sp_middleware/io/plotter/plotter.cpp
         sp_middleware/tools/pid/pid.cpp
+        sp_middleware/tools/crc/crc.cpp
 
          
 

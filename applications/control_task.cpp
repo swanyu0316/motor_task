@@ -1,8 +1,14 @@
+#include <cmath>
+
 #include "cmsis_os.h"
 #include "io/can/can.hpp"
 #include "io/dbus/dbus.hpp"
 #include "motor/rm_motor/rm_motor.hpp"
+#include "referee/pm02/pm02.hpp"
 #include "tools/pid/pid.hpp"
+
+// 实例化PM02初始化  C板通信端口，若使用达妙改为 &huart1, false
+sp::PM02 pm02(&huart6);
 
 //实例化一个遥控器
 sp::DBus remote(&huart3);
@@ -38,6 +44,10 @@ extern "C" void control_task()
   //接收遥控器消息
   remote.request();
 
+  // 向裁判串口请求数据
+  //（如果 PM02 使用 DMA/IT 模式，这里发送一次 request，回调会继续更新）
+  pm02.request();
+
   //can2初始化配置
   can2.config();
   can2.start();
@@ -46,7 +56,7 @@ extern "C" void control_task()
   while (true) {
     switch (remote.sw_r) {
       case sp::DBusSwitchMode::UP:
-        //电容控制策略
+        //电容控制策略 capacitor 自动模式
         break;
 
       case sp::DBusSwitchMode::MID: {
@@ -63,24 +73,24 @@ extern "C" void control_task()
         const float wz_fixed = 2.0f;
 
         // 右摇杆偏离中心，底盘就以固定角速度旋转
-        if (abs(rx) > deadzone || abs(ry) > deadzone) {
-          if (rx < 0 || ry < 0)
+        if (fabsf(rx) > deadzone || fabsf(ry) > deadzone) {
+          if (rx < 0.0f || ry < 0.0f)
             wz = -wz_fixed;  // 向左旋转
           else
             wz = wz_fixed;  // 向右旋转
         }
         else {
-          wz = 0;
+          wz = 0.0f;
         }
 
         // 左摇杆偏离中心，底盘直线运动
-        if (abs(lx) > deadzone || abs(ly) > deadzone) {
+        if (fabsf(lx) > deadzone || fabsf(ly) > deadzone) {
           vx = ly * 5.0f;
           vy = lx * 5.0f;
         }
         else {
-          vx = 0;
-          vy = 0;
+          vx = 0.0f;
+          vy = 0.0f;
         }
 
         //麥輪底盤解算
@@ -100,12 +110,38 @@ extern "C" void control_task()
         motor4_pid_speed.calc(omega_RL, motor_3508_4.speed);
 
         float torque1 = motor1_pid_speed.out;
-        motor_3508_1.cmd(torque1);
         float torque2 = motor2_pid_speed.out;
-        motor_3508_2.cmd(torque2);
         float torque3 = motor3_pid_speed.out;
-        motor_3508_3.cmd(torque3);
         float torque4 = motor4_pid_speed.out;
+
+        // 预测功率 P_pred = sum(tau_i * omega_i)（机械输出功率近似）
+        float P_pred = torque1 * motor_3508_1.speed + torque2 * motor_3508_2.speed +
+                       torque3 * motor_3508_3.speed + torque4 * motor_3508_4.speed;
+
+        // 如果 pm02 没有数据（未连接或未更新）则使用一个保守默认值（例如 2000 W），你可以改成更合理的值
+        float P_max = static_cast<float>(pm02.robot_status.chassis_power_limit);
+        if (P_max <= 0.0f) P_max = 2000.0f;
+
+        const float threshold_pct = 0.95f;  //避免超限
+        float P_limit = P_max * threshold_pct;
+
+        float K_tau = 1.0f;
+
+        // 如果超出功率限制，按比例缩小转矩
+        if (P_pred > P_limit && P_pred > 1e-6f) {
+          K_tau = P_limit / P_pred;
+          if (K_tau < 0.0f) K_tau = 0.0f;
+          if (K_tau > 1.0f) K_tau = 1.0f;
+
+          torque1 *= K_tau;
+          torque2 *= K_tau;
+          torque3 *= K_tau;
+          torque4 *= K_tau;
+        }
+
+        motor_3508_1.cmd(torque1);
+        motor_3508_2.cmd(torque2);
+        motor_3508_3.cmd(torque3);
         motor_3508_4.cmd(torque4);
 
         // 如果在死區的話歸零
