@@ -152,7 +152,6 @@ extern "C" void control_task()
         float K_tau = 1.0f;
         if (discriminant > 0.0f && sum_tau2 > 1e-6f) {
           K_tau = (-sum_tau_omega + sqrtf(discriminant)) / (2.0f * K1 * sum_tau2);
-
           // 在0~1之间
           if (K_tau > 1.0f) K_tau = 1.0f;
           if (K_tau < 0.0f) K_tau = 0.0f;
