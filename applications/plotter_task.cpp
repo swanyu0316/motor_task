@@ -19,6 +19,7 @@ extern "C" void plotter_task()
   while (true) {
 #if TEST_MOTOR_ID == 1
     plotter.plot(remote.ch_lh, motor_3508_1.speed);
+    // plotter.plot(P_in, P_actual, K_tau);
 #elif TEST_MOTOR_ID == 2
     plotter.plot(remote.ch_lh, motor_3508_2.speed);
 #elif TEST_MOTOR_ID == 3

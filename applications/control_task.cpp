@@ -49,7 +49,6 @@ extern "C" void control_task()
   remote.request();
 
   // 向裁判串口请求数据
-  //（如果 PM02 使用 DMA/IT 模式，这里发送一次 request，回调会继续更新）
   pm02.request();
 
   //can2初始化配置
@@ -113,15 +112,11 @@ extern "C" void control_task()
         motor3_pid_speed.calc(omega_RR, motor_3508_3.speed);
         motor4_pid_speed.calc(omega_RL, motor_3508_4.speed);
 
-        float torque1 = motor1_pid_speed.out;
-        float torque2 = motor2_pid_speed.out;
-        float torque3 = motor3_pid_speed.out;
-        float torque4 = motor4_pid_speed.out;
-
+        // 读取电容状态
         supercap.read(can2.rx_data, osKernelSysTick());
         float P_actual = supercap.power_out;
 
-        // 计算期望转矩
+        // 期望转矩
         float tau1 = motor1_pid_speed.out;
         float tau2 = motor2_pid_speed.out;
         float tau3 = motor3_pid_speed.out;
@@ -133,6 +128,7 @@ extern "C" void control_task()
         float omega3 = motor_3508_3.speed;
         float omega4 = motor_3508_4.speed;
 
+        // 预测功率计算参数
         const float K1 = 0.0005f;  // 转矩引起的能量损耗
         const float K2 = 0.0002f;  // 角速度引起的能量损耗
         const float K3 = 20.0f;    // 待机功耗
@@ -141,32 +137,39 @@ extern "C" void control_task()
         float sum_tau_omega = tau1 * omega1 + tau2 * omega2 + tau3 * omega3 + tau4 * omega4;
         float sum_tau2 = tau1 * tau1 + tau2 * tau2 + tau3 * tau3 + tau4 * tau4;
         float sum_omega2 = omega1 * omega1 + omega2 * omega2 + omega3 * omega3 + omega4 * omega4;
+        // P_in = Στ·ω + K1 Στ² + K2 Σω² + K3
+        float P_in = sum_tau_omega + K1 * sum_tau2 + K2 * sum_omega2 + K3;
 
         // 获取功率上限
         float P_max = static_cast<float>(pm02.robot_status.chassis_power_limit);
         if (P_max <= 0.0f) P_max = 2000.0f;
 
-        // --- 计算判别式 ---
+        // 计算判别式
         float discriminant =
           sum_tau_omega * sum_tau_omega - 4.0f * K1 * sum_tau2 * (K2 * sum_omega2 + K3 - P_max);
 
-        // --- 计算转矩缩小系数 K_tau ---
+        // 计算转矩缩小系数 K_tau
         float K_tau = 1.0f;
         if (discriminant > 0.0f && sum_tau2 > 1e-6f) {
           K_tau = (-sum_tau_omega + sqrtf(discriminant)) / (2.0f * K1 * sum_tau2);
 
-          // 限制在0~1之间
+          // 在0~1之间
           if (K_tau > 1.0f) K_tau = 1.0f;
           if (K_tau < 0.0f) K_tau = 0.0f;
         }
 
-        // --- 结合超级电容实际功率进一步限制 ---
-        if (P_actual > P_max) {
-          float K_supercap = P_max / P_actual;
-          if (K_supercap < K_tau) K_tau = K_supercap;  // 取更小值
+        // 超级电容控制实际功率
+        float P_needed_from_cap = P_in - P_max;
+        if (P_needed_from_cap > 0.0f) {
+          float cap_supply = std::min(P_actual, P_needed_from_cap);  // 电容补充功率
+          float P_effective = P_in - cap_supply;
+          if (P_effective > P_max) {
+            float K_supercap = P_max / P_effective;
+            if (K_supercap < K_tau) K_tau = K_supercap;
+          }
         }
 
-        // --- 应用缩小系数到转矩 ---
+        // 应用缩小系数到转矩
         tau1 *= K_tau;
         tau2 *= K_tau;
         tau3 *= K_tau;
@@ -174,7 +177,7 @@ extern "C" void control_task()
 
         const float RM3508_TORQUE_CONST = 0.3f;  // 扭矩常数0.3N·m/A
 
-        // --- 转换为电流发送给电机 ---
+        // 转换为电流发送给电机
         float current1 = tau1 / RM3508_TORQUE_CONST;
         float current2 = tau2 / RM3508_TORQUE_CONST;
         float current3 = tau3 / RM3508_TORQUE_CONST;
