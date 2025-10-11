@@ -121,35 +121,69 @@ extern "C" void control_task()
         supercap.read(can2.rx_data, osKernelSysTick());
         float P_actual = supercap.power_out;
 
-        // 预测功率 P_pred = sum(tau_i * omega_i)（机械输出功率近似）
-        float P_pred = torque1 * motor_3508_1.speed + torque2 * motor_3508_2.speed +
-                       torque3 * motor_3508_3.speed + torque4 * motor_3508_4.speed;
+        // 计算期望转矩
+        float tau1 = motor1_pid_speed.out;
+        float tau2 = motor2_pid_speed.out;
+        float tau3 = motor3_pid_speed.out;
+        float tau4 = motor4_pid_speed.out;
 
-        // 如果 pm02 没有数据则使用一个保守默认值
+        // 获取轮速
+        float omega1 = motor_3508_1.speed;
+        float omega2 = motor_3508_2.speed;
+        float omega3 = motor_3508_3.speed;
+        float omega4 = motor_3508_4.speed;
+
+        const float K1 = 0.0005f;  // 转矩引起的能量损耗
+        const float K2 = 0.0002f;  // 角速度引起的能量损耗
+        const float K3 = 20.0f;    // 待机功耗
+
+        // 预测功率计算
+        float sum_tau_omega = tau1 * omega1 + tau2 * omega2 + tau3 * omega3 + tau4 * omega4;
+        float sum_tau2 = tau1 * tau1 + tau2 * tau2 + tau3 * tau3 + tau4 * tau4;
+        float sum_omega2 = omega1 * omega1 + omega2 * omega2 + omega3 * omega3 + omega4 * omega4;
+
+        // 获取功率上限
         float P_max = static_cast<float>(pm02.robot_status.chassis_power_limit);
         if (P_max <= 0.0f) P_max = 2000.0f;
 
-        const float threshold_pct = 0.95f;  //避免超限
-        float P_limit = P_max * threshold_pct;
+        // --- 计算判别式 ---
+        float discriminant =
+          sum_tau_omega * sum_tau_omega - 4.0f * K1 * sum_tau2 * (K2 * sum_omega2 + K3 - P_max);
 
+        // --- 计算转矩缩小系数 K_tau ---
         float K_tau = 1.0f;
+        if (discriminant > 0.0f && sum_tau2 > 1e-6f) {
+          K_tau = (-sum_tau_omega + sqrtf(discriminant)) / (2.0f * K1 * sum_tau2);
 
-        // 如果超出功率限制，按比例缩小转矩
-        if ((P_pred > P_limit || P_actual > P_limit) && P_pred > 1e-6f) {
-          K_tau = P_limit / P_pred;
-          if (K_tau < 0.0f) K_tau = 0.0f;
+          // 限制在0~1之间
           if (K_tau > 1.0f) K_tau = 1.0f;
-
-          torque1 *= K_tau;
-          torque2 *= K_tau;
-          torque3 *= K_tau;
-          torque4 *= K_tau;
+          if (K_tau < 0.0f) K_tau = 0.0f;
         }
 
-        motor_3508_1.cmd(torque1);
-        motor_3508_2.cmd(torque2);
-        motor_3508_3.cmd(torque3);
-        motor_3508_4.cmd(torque4);
+        // --- 结合超级电容实际功率进一步限制 ---
+        if (P_actual > P_max) {
+          float K_supercap = P_max / P_actual;
+          if (K_supercap < K_tau) K_tau = K_supercap;  // 取更小值
+        }
+
+        // --- 应用缩小系数到转矩 ---
+        tau1 *= K_tau;
+        tau2 *= K_tau;
+        tau3 *= K_tau;
+        tau4 *= K_tau;
+
+        const float RM3508_TORQUE_CONST = 0.3f;  // 扭矩常数0.3N·m/A
+
+        // --- 转换为电流发送给电机 ---
+        float current1 = tau1 / RM3508_TORQUE_CONST;
+        float current2 = tau2 / RM3508_TORQUE_CONST;
+        float current3 = tau3 / RM3508_TORQUE_CONST;
+        float current4 = tau4 / RM3508_TORQUE_CONST;
+
+        motor_3508_1.cmd(current1);
+        motor_3508_2.cmd(current2);
+        motor_3508_3.cmd(current3);
+        motor_3508_4.cmd(current4);
 
         // 如果在死区的话归零
         if (
