@@ -58,6 +58,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         sp_middleware/io/plotter/plotter.cpp
         sp_middleware/tools/pid/pid.cpp
         sp_middleware/tools/crc/crc.cpp
+        sp_middleware/referee/pm02/pm02.cpp
 
          
 
