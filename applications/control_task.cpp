@@ -4,6 +4,7 @@
 #include "io/can/can.hpp"
 #include "io/dbus/dbus.hpp"
 #include "motor/rm_motor/rm_motor.hpp"
+#include "motor/super_cap/super_cap.hpp"
 #include "referee/pm02/pm02.hpp"
 #include "tools/pid/pid.hpp"
 
@@ -15,6 +16,9 @@ sp::DBus remote(&huart3);
 
 //实例化can2
 sp::CAN can2(&hcan2);
+
+//实例化supercap
+sp::SuperCap supercap(sp::SuperCapMode::AUTOMODE);
 
 //实例化四个id分别为1、2、3、4的3508电机
 sp::RM_Motor motor_3508_1(1, sp::RM_Motors::M3508);
@@ -114,11 +118,14 @@ extern "C" void control_task()
         float torque3 = motor3_pid_speed.out;
         float torque4 = motor4_pid_speed.out;
 
+        supercap.read(can2.rx_data, osKernelSysTick());
+        float P_actual = supercap.power_out;
+
         // 预测功率 P_pred = sum(tau_i * omega_i)（机械输出功率近似）
         float P_pred = torque1 * motor_3508_1.speed + torque2 * motor_3508_2.speed +
                        torque3 * motor_3508_3.speed + torque4 * motor_3508_4.speed;
 
-        // 如果 pm02 没有数据（未连接或未更新）则使用一个保守默认值（例如 2000 W），你可以改成更合理的值
+        // 如果 pm02 没有数据则使用一个保守默认值
         float P_max = static_cast<float>(pm02.robot_status.chassis_power_limit);
         if (P_max <= 0.0f) P_max = 2000.0f;
 
@@ -128,7 +135,7 @@ extern "C" void control_task()
         float K_tau = 1.0f;
 
         // 如果超出功率限制，按比例缩小转矩
-        if (P_pred > P_limit && P_pred > 1e-6f) {
+        if ((P_pred > P_limit || P_actual > P_limit) && P_pred > 1e-6f) {
           K_tau = P_limit / P_pred;
           if (K_tau < 0.0f) K_tau = 0.0f;
           if (K_tau > 1.0f) K_tau = 1.0f;
@@ -144,7 +151,7 @@ extern "C" void control_task()
         motor_3508_3.cmd(torque3);
         motor_3508_4.cmd(torque4);
 
-        // 如果在死區的話歸零
+        // 如果在死区的话归零
         if (
           fabs(lx) < deadzone && fabs(ly) < deadzone && fabs(rx) < deadzone &&
           fabs(ry) < deadzone) {
