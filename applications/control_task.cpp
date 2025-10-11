@@ -59,7 +59,7 @@ extern "C" void control_task()
   while (true) {
     switch (remote.sw_r) {
       case sp::DBusSwitchMode::UP:
-        //电容控制策略 capacitor 自动模式
+        //电容控制策略 capacitor 自动模式 未完待续
         break;
 
       case sp::DBusSwitchMode::MID: {
@@ -159,15 +159,12 @@ extern "C" void control_task()
         }
 
         // 超级电容控制实际功率
-        float P_needed_from_cap = P_in - P_max;
-        if (P_needed_from_cap > 0.0f) {
-          float cap_supply = std::min(P_actual, P_needed_from_cap);  // 电容补充功率
-          float P_effective = P_in - cap_supply;
-          if (P_effective > P_max) {
-            float K_supercap = P_max / P_effective;
-            if (K_supercap < K_tau) K_tau = K_supercap;
-          }
-        }
+        supercap.write(
+          can2.tx_data,                                      // uint8_t* CAN发送数据缓冲
+          pm02.robot_status.chassis_power_limit,             // 底盘功率上限
+          pm02.power_heat.buffer_energy,                     // 超级电容剩余能量
+          pm02.robot_status.power_management_chassis_output  // 底盘实际输出
+        );
 
         // 应用缩小系数到转矩
         tau1 *= K_tau;
