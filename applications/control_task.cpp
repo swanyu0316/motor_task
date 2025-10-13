@@ -27,6 +27,7 @@ sp::RM_Motor motor_3508_3(3, sp::RM_Motors::M3508);  // RR (右后)
 sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);  // RL (左后)
 
 // dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
+
 // PID 参数
 float deadzone = 0.05f;
 
@@ -56,29 +57,22 @@ extern "C" void control_task()
   can2.config();
   can2.start();
 
+  //ps：其他大多数电机cmd的均为扭矩值
   while (true) {
-    // 在 switch 外部定义电流变量，以便在循环末尾统一发送
-    float current1 = 0.0f;
-    float current2 = 0.0f;
-    float current3 = 0.0f;
-    float current4 = 0.0f;
-
     switch (remote.sw_r) {
-      case sp::DBusSwitchMode::UP: {
+      case sp::DBusSwitchMode::UP:
         //电容控制策略 自动模式 未完待续
-
         break;
-      }
 
       case sp::DBusSwitchMode::MID: {
         // 摇杆输入
         // 左摇杆用于平移 (vx, vy)
-        float lv_input = remote.ch_lv;  // 左摇杆前后  vx (前进/后退)
-        float lh_input = remote.ch_lh;  // 左摇杆左右  vy (左移/右移)
+        float lv_input = remote.ch_lv;  // 左摇杆前后 -> vx (前进/后退)
+        float lh_input = remote.ch_lh;  // 左摇杆左右 -> vy (左移/右移)
 
         // 右摇杆用于旋转 (wz)
-        float rv_input = remote.ch_rv;  // 右摇杆前后 向左转
-        float rh_input = remote.ch_rh;  // 右摇杆左右 向右转
+        float rv_input = remote.ch_rv;  // 右摇杆前后 -> 触发向左转
+        float rh_input = remote.ch_rh;  // 右摇杆左右 -> 触发向右转
 
         // 将摇杆输入转化为速度指令
         float vx = 0.0f;  // 前后速度指令
@@ -87,13 +81,11 @@ extern "C" void control_task()
         const float wz_fixed = 2.0f;
         const float max_speed = 1.0f;  // 最大平移速度系数
 
-        // 右摇杆偏离中心 地盘旋转
+        // 右摇杆偏离中心，地盘旋转
         if (fabsf(rv_input) > deadzone) {
-          // 底盘向左转
           wz = wz_fixed;
         }
         else if (fabsf(rh_input) > deadzone) {
-          // 底盘向右转
           wz = -wz_fixed;
         }
         else {
@@ -102,7 +94,6 @@ extern "C" void control_task()
 
         // 左摇杆偏离中心，底盘直线运动
         if (fabsf(lv_input) > deadzone || fabsf(lh_input) > deadzone) {
-          // 左摇杆前后控制 vx) > deadzone) {
           vx = lv_input * max_speed;
           vy = -lh_input * max_speed;
         }
@@ -111,7 +102,7 @@ extern "C" void control_task()
           vy = 0.0f;
         }
 
-        //麥輪底盤解算
+        //麦轮底盘结算
         const float r = 0.077f;                  // 轮半径 m
         const float L_plus_W = 0.165f + 0.185f;  // 纵向+横向到中心 m
         const float gear_ratio = 14.9f;          // 电机减速比
@@ -167,14 +158,13 @@ extern "C" void control_task()
         K_tau = 1.0f;
         if (discriminant > 0.0f && sum_tau2 > 1e-6f) {
           K_tau = (-sum_tau_omega + sqrtf(discriminant)) / (2.0f * K1 * sum_tau2);
-          // 在0~1之间
           if (K_tau > 1.0f) K_tau = 1.0f;
           if (K_tau < 0.0f) K_tau = 0.0f;
         }
 
         // 超级电容控制实际功率
         supercap.write(
-          can2.tx_data,                                      // uint8_t* CAN发送数据缓冲
+          can2.tx_data,                                      // CAN发送数据缓冲
           pm02.robot_status.chassis_power_limit,             // 底盘功率上限
           pm02.power_heat.buffer_energy,                     // 超级电容剩余能量
           pm02.robot_status.power_management_chassis_output  // 底盘实际输出
@@ -189,45 +179,59 @@ extern "C" void control_task()
         const float RM3508_TORQUE_CONST = 0.3f;  // 扭矩常数0.3N·m/A
 
         // 转换为电流发送给电机
-        current1 = tau1 / RM3508_TORQUE_CONST;
-        current2 = tau2 / RM3508_TORQUE_CONST;
-        current3 = tau3 / RM3508_TORQUE_CONST;
-        current4 = tau4 / RM3508_TORQUE_CONST;
+        float current1 = tau1 / RM3508_TORQUE_CONST;
+        float current2 = tau2 / RM3508_TORQUE_CONST;
+        float current3 = tau3 / RM3508_TORQUE_CONST;
+        float current4 = tau4 / RM3508_TORQUE_CONST;
+
+        motor_3508_1.cmd(current1);
+        motor_3508_2.cmd(current2);
+        motor_3508_3.cmd(current3);
+        motor_3508_4.cmd(current4);
 
         // 如果在死区的话归零
         if (
           fabs(lv_input) < deadzone && fabs(lh_input) < deadzone && fabs(rv_input) < deadzone &&
           fabs(rh_input) < deadzone) {
-          current1 = 0;
-          current2 = 0;
-          current3 = 0;
-          current4 = 0;
+          motor_3508_1.cmd(0);
+          motor_3508_2.cmd(0);
+          motor_3508_3.cmd(0);
+          motor_3508_4.cmd(0);
         }
 
-        // 电流限幅
-        if (current1 > 10000.0f) current1 = 10000.0f;
-        if (current1 < -10000.0f) current1 = -10000.0f;
-        if (current2 > 10000.0f) current2 = 10000.0f;
-        if (current2 < -10000.0f) current2 = -10000.0f;
-        if (current3 > 10000.0f) current3 = 10000.0f;
-        if (current3 < -10000.0f) current3 = -10000.0f;
-        if (current4 > 10000.0f) current4 = 10000.0f;
-        if (current4 < -10000.0f) current4 = -10000.0f;
+        float voltage_cmd = vx;
+
+        // 限幅，防止过大
+        if (voltage_cmd > 10.0f) voltage_cmd = 10.0f;
+        if (voltage_cmd < -10.0f) voltage_cmd = -10.0f;
 
         break;
       }
 
-        //约定右down挡时全部电机失能
+        //全部电机失能
       case sp::DBusSwitchMode::DOWN: {
-        current1 = 0.0f;
-        current2 = 0.0f;
-        current3 = 0.0f;
-        current4 = 0.0f;
+        motor_3508_1.cmd(0.0f);
+        motor_3508_2.cmd(0.0f);
+        motor_3508_3.cmd(0.0f);
+        motor_3508_4.cmd(0.0f);
         break;
       }
       default:
         break;
     }
+
+    // 发送
+    motor_3508_1.write(can2.tx_data);
+
+    motor_3508_2.write(can2.tx_data);
+
+    motor_3508_3.write(can2.tx_data);
+
+    motor_3508_4.write(can2.tx_data);
+
+    can2.send(motor_3508_1.tx_id);
+
+    osDelay(10);
   }
 }
 
@@ -265,9 +269,8 @@ extern "C" void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan)
         motor_3508_2.read(can2.rx_data, stamp_ms);
       else if (can2.rx_id == motor_3508_3.rx_id)
         motor_3508_3.read(can2.rx_data, stamp_ms);
-      else if (can2.rx_id == motor_3508_4.rx_id) {
+      else if (can2.rx_id == motor_3508_4.rx_id)
         motor_3508_4.read(can2.rx_data, stamp_ms);
-      }
     }
   }
 }
