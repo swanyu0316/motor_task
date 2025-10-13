@@ -21,10 +21,10 @@ sp::CAN can2(&hcan2);
 sp::SuperCap supercap(sp::SuperCapMode::AUTOMODE);
 
 //实例化四个id分别为1、2、3、4的3508电机
-sp::RM_Motor motor_3508_1(1, sp::RM_Motors::M3508);
-sp::RM_Motor motor_3508_2(2, sp::RM_Motors::M3508);
-sp::RM_Motor motor_3508_3(3, sp::RM_Motors::M3508);
-sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
+sp::RM_Motor motor_3508_1(1, sp::RM_Motors::M3508);  // FL (左前)
+sp::RM_Motor motor_3508_2(2, sp::RM_Motors::M3508);  // FR (右前)
+sp::RM_Motor motor_3508_3(3, sp::RM_Motors::M3508);  // RR (右后)
+sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);  // RL (左后)
 
 // dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
 
@@ -66,46 +66,41 @@ extern "C" void control_task()
 
       case sp::DBusSwitchMode::MID: {
         // 摇杆输入
-        float lx = remote.ch_rh;  // 右摇杆左右
-        float ly = remote.ch_rv;  // 右摇杆前后
-        float rx = remote.ch_lh;  // 左摇杆左右
-        float ry = remote.ch_lv;  // 左摇杆前后
+        // 左摇杆用于平移 (vx, vy)
+        float lv_input = remote.ch_lv;  // 左摇杆前后 -> vx (前进/后退)
+        float lh_input = remote.ch_lh;  // 左摇杆左右 -> vy (左移/右移)
+
+        // 右摇杆用于旋转 (wz)
+        float rv_input = remote.ch_rv;  // 右摇杆前后 -> 触发向左转
+        float rh_input = remote.ch_rh;  // 右摇杆左右 -> 触发向右转
 
         // 将摇杆输入转化为速度指令
         float vx = 0.0f;  // 前后速度指令
         float vy = 0.0f;  // 左右速度指令
         float wz = 0.0f;  // 旋转角速度
         const float wz_fixed = 2.0f;
+        const float max_speed = 1.0f;  // 最大平移速度系数
 
-        // 右摇杆前后控制向左旋转
-        if (fabsf(ry) > deadzone) {
-          if (ry < 0.0f) {
-            wz = -wz_fixed;  // 右摇杆向前推 - 向左旋转 假设+是逆时针
-          }
-          else {
-            wz = wz_fixed;  // 右摇杆向后拉 - 向左旋转
-          }
+        // 右摇杆偏离中心，地盘旋转
+        if (fabsf(rv_input) > deadzone) {
+          // 底盘向左转 (+wz)
+          wz = wz_fixed;
         }
-
-        // 右摇杆左右控制向右旋转
-        else if (fabsf(rx) > deadzone) {
-          if (rx < 0.0f) {
-            wz = wz_fixed;  // 右摇杆向左推 - 向右旋转
-          }
-          else {
-            wz = -wz_fixed;  // 右摇杆向右推 - 向右旋转
-          }
+        else if (fabsf(rh_input) > deadzone) {
+          // 底盘向右转 (-wz)
+          wz = -wz_fixed;
         }
         else {
           wz = 0.0f;
         }
 
         // 左摇杆偏离中心，底盘直线运动
-        if (fabsf(lx) > deadzone || fabsf(ly) > deadzone) {
-          vx = ly * 1.0f;
-          vy = lx * 1.0f;
+        if (fabsf(lv_input) > deadzone || fabsf(lh_input) > deadzone) {
+          // 左摇杆前后控制 vx) > deadzone) {
+          vx = lv_input * max_speed;
+          vy = -lh_input * max_speed;
         }
-        else {
+        else if (wz == 0.0f) {
           vx = 0.0f;
           vy = 0.0f;
         }
@@ -115,10 +110,10 @@ extern "C" void control_task()
         const float L_plus_W = 0.165f + 0.185f;  // 纵向+横向到中心 m
         const float gear_ratio = 14.9f;          // 电机减速比
 
-        float omega_FL = (1.0f / r) * (vx - vy + L_plus_W * wz) * gear_ratio;
-        float omega_FR = (1.0f / r) * (vx + vy - L_plus_W * wz) * gear_ratio;
-        float omega_RL = (1.0f / r) * (vx + vy + L_plus_W * wz) * gear_ratio;
-        float omega_RR = (1.0f / r) * (vx - vy - L_plus_W * wz) * gear_ratio;
+        float omega_FL = (1.0f / r) * (vx - vy - L_plus_W * wz) * gear_ratio;
+        float omega_FR = (1.0f / r) * (vx + vy + L_plus_W * wz) * gear_ratio;
+        float omega_RL = (1.0f / r) * (vx + vy - L_plus_W * wz) * gear_ratio;
+        float omega_RR = (1.0f / r) * (vx - vy + L_plus_W * wz) * gear_ratio;
 
         // PID
         motor1_pid_speed.calc(omega_FL, motor_3508_1.speed);
@@ -200,8 +195,8 @@ extern "C" void control_task()
 
         // 如果在死区的话归零
         if (
-          fabs(lx) < deadzone && fabs(ly) < deadzone && fabs(rx) < deadzone &&
-          fabs(ry) < deadzone) {
+          fabs(lv_input) < deadzone && fabs(lh_input) < deadzone && fabs(rv_input) < deadzone &&
+          fabs(rh_input) < deadzone) {
           motor_3508_1.cmd(0);
           motor_3508_2.cmd(0);
           motor_3508_3.cmd(0);
