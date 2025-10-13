@@ -17,6 +17,8 @@ extern sp::PM02 pm02;
 extern float P_in;
 extern float P_actual;
 extern float K_tau;
+extern float dbg_omega_RL;
+extern float dbg_current4;
 
 sp::Plotter plotter(&huart1);
 
@@ -28,6 +30,7 @@ extern "C" void plotter_task()
 #if TEST_MOTOR_ID == 1
     //plotter.plot(remote.ch_lh, motor_3508_1.speed);
     plotter.plot(P_in, P_actual, K_tau);
+    //plotter.plot(dbg_omega_RL, motor_3508_4.speed, dbg_current4);
 #elif TEST_MOTOR_ID == 2
     plotter.plot(remote.ch_lh, motor_3508_2.speed);
 #elif TEST_MOTOR_ID == 3
