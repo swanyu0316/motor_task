@@ -8,7 +8,7 @@
 #include "referee/pm02/pm02.hpp"
 #include "tools/pid/pid.hpp"
 
-// 实例化PM02初始化  C板通信端口，若使用达妙改为 &huart1, false
+// 实例化PM02初始化
 sp::PM02 pm02(&huart6);
 
 //实例化一个遥控器
@@ -27,10 +27,8 @@ sp::RM_Motor motor_3508_3(3, sp::RM_Motors::M3508);
 sp::RM_Motor motor_3508_4(4, sp::RM_Motors::M3508);
 
 // dt: 控制周期，1ms  Kp: 比例系数（反应速度） Ki: 积分系数（消除静差） Kd: 微分系数（抑制震荡） 输出上限 输出下限 alpha: 滤波系数 是否角度环（false表示线性速度环）是否动态更新
-// 速度环 PID
 
 // PID 参数
-
 float deadzone = 0.05f;
 
 float kp_speed = 0.015f;
@@ -42,6 +40,10 @@ sp::PID motor1_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 
 sp::PID motor2_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor3_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
 sp::PID motor4_pid_speed(kp_speed, ki_speed, kd_speed, 0.0f, 10000.0f, 5000.0f, 1.0f, false, true);
+
+float P_in = 0.0f;      // 预测输入功率
+float P_actual = 0.0f;  // 实际输出功率（从电容读取）
+float K_tau = 1.0f;     // 转矩缩小系数
 
 extern "C" void control_task()
 {
@@ -78,10 +80,10 @@ extern "C" void control_task()
         // 右摇杆前后控制向左旋转
         if (fabsf(ry) > deadzone) {
           if (ry < 0.0f) {
-            wz = -wz_fixed;  // 右摇杆向前推 - 向左旋转
+            wz = -wz_fixed;  // 右摇杆向前推 - 向左旋转 假设+是逆时针
           }
           else {
-            wz = -wz_fixed;  // 右摇杆向后拉 - 向左旋转
+            wz = wz_fixed;  // 右摇杆向后拉 - 向左旋转
           }
         }
 
@@ -91,7 +93,7 @@ extern "C" void control_task()
             wz = wz_fixed;  // 右摇杆向左推 - 向右旋转
           }
           else {
-            wz = wz_fixed;  // 右摇杆向右推 - 向右旋转
+            wz = -wz_fixed;  // 右摇杆向右推 - 向右旋转
           }
         }
         else {
@@ -126,7 +128,7 @@ extern "C" void control_task()
 
         // 读取电容状态
         supercap.read(can2.rx_data, osKernelSysTick());
-        float P_actual = supercap.power_out;
+        P_actual = supercap.power_out;
 
         // 期望转矩
         float tau1 = motor1_pid_speed.out;
@@ -150,7 +152,7 @@ extern "C" void control_task()
         float sum_tau2 = tau1 * tau1 + tau2 * tau2 + tau3 * tau3 + tau4 * tau4;
         float sum_omega2 = omega1 * omega1 + omega2 * omega2 + omega3 * omega3 + omega4 * omega4;
         // P_in = Στ·ω + K1 Στ² + K2 Σω² + K3
-        float P_in = sum_tau_omega + K1 * sum_tau2 + K2 * sum_omega2 + K3;
+        P_in = sum_tau_omega + K1 * sum_tau2 + K2 * sum_omega2 + K3;
 
         // 获取功率上限
         float P_max = static_cast<float>(pm02.robot_status.chassis_power_limit);
@@ -161,7 +163,7 @@ extern "C" void control_task()
           sum_tau_omega * sum_tau_omega - 4.0f * K1 * sum_tau2 * (K2 * sum_omega2 + K3 - P_max);
 
         // 计算转矩缩小系数 K_tau
-        float K_tau = 1.0f;
+        K_tau = 1.0f;
         if (discriminant > 0.0f && sum_tau2 > 1e-6f) {
           K_tau = (-sum_tau_omega + sqrtf(discriminant)) / (2.0f * K1 * sum_tau2);
           // 在0~1之间

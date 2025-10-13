@@ -14,6 +14,10 @@ extern sp::RM_Motor motor_3508_4;
 extern sp::SuperCap supercap;
 extern sp::PM02 pm02;
 
+extern float P_in;
+extern float P_actual;
+extern float K_tau;
+
 sp::Plotter plotter(&huart1);
 
 extern "C" void plotter_task()
@@ -22,8 +26,8 @@ extern "C" void plotter_task()
 
   while (true) {
 #if TEST_MOTOR_ID == 1
-    plotter.plot(remote.ch_lh, motor_3508_1.speed);
-    //plotter.plot(P_in, P_actual, K_tau);
+    //plotter.plot(remote.ch_lh, motor_3508_1.speed);
+    plotter.plot(P_in, P_actual, K_tau);
 #elif TEST_MOTOR_ID == 2
     plotter.plot(remote.ch_lh, motor_3508_2.speed);
 #elif TEST_MOTOR_ID == 3
